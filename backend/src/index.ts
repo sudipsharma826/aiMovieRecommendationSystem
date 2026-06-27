@@ -19,6 +19,9 @@ app.use(express.json());
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+app.get("/", (_req, res) => {
+  res.json({ message: "Welcome to the AI Movie Recommendation API!" });
+});
 
 app.use("/api/recommend", recommendRouter);
 

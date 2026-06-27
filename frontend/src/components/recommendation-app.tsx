@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Clapperboard, Loader2, Mail, Wand2 } from "lucide-react";
 import Image from "next/image";
 
