@@ -406,6 +406,11 @@ OPENROUTER_MODEL=openai/gpt-4o
 
 # Server
 PORT=8000
+
+# CORS - Allow frontend to make requests
+# For local development: http://localhost:3000
+# For production: https://your-frontend.vercel.app
+ORIGIN_URL=http://localhost:3000
 ```
 
 ### Frontend (`.env`)

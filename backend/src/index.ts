@@ -5,7 +5,15 @@ import { recommendRouter } from "./routes/recommended.routes";
 
 const app = express();
 
-app.use(cors());
+// CORS configuration - allow requests from the frontend
+const corsOptions = {
+  origin: process.env.ORIGIN_URL || "http://localhost:3000",
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
