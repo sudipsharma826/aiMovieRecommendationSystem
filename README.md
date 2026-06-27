@@ -542,61 +542,83 @@ The project was built in **10 logical phases** with sequential commits to demons
 
 ## Troubleshooting
 
-### 404 Error When Hosting Frontend
+### 404 Error When Hosting Frontend on Vercel
 
-**Problem:** Frontend works in development (`npm run dev`) but shows 404 when hosted.
+**Problem:** Frontend works in development (`npm run dev`) but shows 404 when deployed to Vercel.
 
-**Solution:** Next.js 13+ with App Router requires explicit configuration for static exports or proper deployment setup.
+**Solution:** This project uses a monorepo structure with the frontend in a subdirectory. Vercel needs to be configured to deploy from the `frontend` folder.
 
-#### Option 1: Configure for Static Export (if deploying to static hosting)
+#### Step 1: Root-Level Vercel Configuration
 
-Update `frontend/next.config.ts`:
+Create `vercel.json` in the root of your project (already done):
 
-```typescript
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  output: "export",
-  images: {
-    unoptimized: true,
-  },
-  trailingSlash: true,
-};
-
-export default nextConfig;
+```json
+{
+  "projects": [
+    {
+      "src": "frontend",
+      "use": "@vercel/next"
+    }
+  ]
+}
 ```
 
-Then build and deploy:
-```bash
-cd frontend
-npm run build
-# Deploy the 'out' folder to your hosting service
-```
+#### Step 2: Frontend Configuration
 
-#### Option 2: Deploy to Vercel/Netlify (Recommended)
+The `frontend/next.config.ts` has been updated with:
+- `images.unoptimized: true` - Fixes image optimization issues
+- `trailingSlash: true` - Ensures consistent routing
+- `reactStrictMode: true` - Better error handling
 
-For Vercel:
+#### Step 3: Deploy to Vercel
+
+**Option A: Using Vercel CLI (Recommended)**
 ```bash
+# Install Vercel CLI
 npm install -g vercel
+
+# Deploy from root directory
+vercel
+
+# Or deploy the frontend specifically
+cd frontend
 vercel
 ```
 
-For Netlify, use the Netlify adapter or deploy with:
-```bash
-npm run build
-# Upload the .next folder
-```
+**Option B: Using Vercel Dashboard**
+1. Go to [vercel.com](https://vercel.com)
+2. Import your repository
+3. **Important:** Set "Root Directory" to `frontend` in project settings
+4. Vercel will auto-detect Next.js and deploy
 
-#### Option 3: Ensure Backend is Running
+**Option C: Using vercel.json in frontend folder**
 
-The 404 might be from the backend API, not the frontend. Make sure:
-1. Backend is running on `http://localhost:8000`
-2. `NEXT_PUBLIC_API_URL` in frontend `.env` points to the correct backend URL
-3. CORS is properly configured (already done in `backend/src/index.ts`)
+The `frontend/vercel.json` file is also included as a backup configuration.
 
-#### Option 4: Check API Route Configuration
+#### Step 4: Environment Variables in Vercel
 
-If you're using Next.js API routes (not in this project), ensure they're in `app/api/` directory with `route.ts` files. This project uses a separate Express backend, so this doesn't apply.
+In your Vercel project settings, add:
+- `NEXT_PUBLIC_API_URL` = Your backend URL (e.g., `https://your-backend.vercel.app` or your Express server URL)
+
+#### Common Issues:
+
+1. **Wrong Root Directory:** If you uploaded the entire repo, make sure Vercel is deploying from the `frontend` folder, not the root.
+
+2. **Missing Build Settings:** Ensure Vercel detects Next.js automatically. If not, manually set:
+   - Framework Preset: Next.js
+   - Build Command: `npm run build`
+   - Output Directory: `.next`
+
+3. **Backend Not Running:** The 404 might be from the backend API. Deploy your backend separately (e.g., to Render, Railway, or Vercel as a separate project) and update `NEXT_PUBLIC_API_URL`.
+
+4. **Monorepo Setup:** If using a monorepo, ensure Vercel is configured to only deploy the frontend project.
+
+#### Quick Fix Checklist:
+- [ ] Root `vercel.json` exists with `"src": "frontend"`
+- [ ] `frontend/next.config.ts` has the updated configuration
+- [ ] Vercel project root directory is set to `frontend`
+- [ ] `NEXT_PUBLIC_API_URL` environment variable is set in Vercel
+- [ ] Backend is deployed and accessible
 
 ---
 
