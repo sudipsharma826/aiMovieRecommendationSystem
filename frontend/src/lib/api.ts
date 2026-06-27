@@ -22,7 +22,7 @@ export async function fetchMovies(input: {
   mood: string;
   count: number;
 }): Promise<RecommendationsResponse> {
-  const response = await fetch(`${api_url}/api/recommend`, {
+  const response = await fetch(`/api/recommend`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
