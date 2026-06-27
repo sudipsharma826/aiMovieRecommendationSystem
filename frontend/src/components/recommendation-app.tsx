@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Clapperboard, Loader2, Sparkles, Wand2 } from "lucide-react";
+import { Clapperboard, Loader2, Mail, Wand2 } from "lucide-react";
+import Image from "next/image";
 
 import { MovieCard } from "@/components/movie-card";
 import { MovieCardSkeleton } from "@/components/movie-card-skeleton";
+import { AdSenseBanner } from "@/components/adsense-banner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -80,14 +82,43 @@ export function RecommendationApp() {
     <div className="min-h-svh bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-violet-100 via-indigo-50 to-sky-50">
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
         <header className="mb-10 text-center">
-          <div className="mb-4 text-5xl inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-1.5 text-sm font-medium text-violet-700 shadow-sm ring-1 ring-violet-200/60 backdrop-blur">
-            <Sparkles className="size-10 text-amber-500" />
-            {/* LangChain Crash Course */}
+          <div className="mb-4 inline-flex items-center justify-center">
+            <Image
+              src="/logo.png"
+              alt="AI Movie Recommendation logo"
+              width={120}
+              height={120}
+              className="rounded-2xl shadow-lg"
+              priority
+            />
           </div>
           <h1 className="bg-gradient-to-r from-violet-700 via-indigo-600 to-sky-600 bg-clip-text text-4xl font-bold tracking-tight text-transparent sm:text-5xl">
-            LangChain Crash Course: AI Movie Picks
+            AI Movie Recommendation
           </h1>
+          <p className="mt-3 text-sm text-slate-600">
+            Developed by{" "}
+            <a
+              href="https://sudipsharma.com.np"
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-violet-700 underline underline-offset-2 hover:text-violet-800"
+            >
+              Sudip Sharma
+            </a>
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            <a
+              href="mailto:sudeepsharma826@gmail.com"
+              className="inline-flex items-center gap-1.5 text-violet-700 hover:text-violet-800"
+            >
+              <Mail className="size-3.5" />
+              sudeepsharma826@gmail.com
+            </a>
+          </p>
         </header>
+
+        <AdSenseBanner slot="TOP_BANNER_SLOT" />
+
 
         <div className="grid gap-8 lg:grid-cols-[360px_1fr]">
           <aside className="h-fit rounded-2xl border border-white/80 bg-white/80 p-6 shadow-xl shadow-violet-200/40 backdrop-blur-md">
@@ -179,6 +210,10 @@ export function RecommendationApp() {
                 )}
               </Button>
             </form>
+
+            <div className="mt-6 flex justify-center">
+              <AdSenseBanner slot="SIDEBAR_AD_SLOT" format="auto" />
+            </div>
           </aside>
 
           <main>
@@ -228,7 +263,12 @@ export function RecommendationApp() {
                 No movies returned. Try a different prompt.
               </div>
             )}
+
           </main>
+
+          <div className="mt-10 flex justify-center">
+            <AdSenseBanner slot="BOTTOM_AD_SLOT" />
+          </div>
         </div>
       </div>
     </div>
