@@ -10,7 +10,8 @@ function getChatModel() {
     apiKey: process.env.OPENROUTER_API_KEY,
 
     // which model OpenRouter should call
-    model: "openai/gpt-4o",
+    model: "deepseek/deepseek-chat-v3",
+    maxTokens: 4000, // max tokens in the response
 
     // controls randomness
     // lower = more deterministic

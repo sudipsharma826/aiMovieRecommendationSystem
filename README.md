@@ -402,7 +402,7 @@ OPENROUTER_API_KEY=sk-or-v1-your-key-here
 
 # Model to use (any model supported by OpenRouter)
 # Popular options: openai/gpt-4o, anthropic/claude-3.5-sonnet, google/gemini-pro
-OPENROUTER_MODEL=openai/gpt-4o
+OPENROUTER_MODEL=deepseek/deepseek-chat-v3
 
 # Server
 PORT=8000
