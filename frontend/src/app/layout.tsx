@@ -15,7 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AI Movie Recommendation",
   description: "AI Movie Recommendation by Sudip Sharma. Discover your next favorite movie with our intelligent recommendation engine.",
-  icons:{ icon: "/logo.png" },
   authors: [{ name: "Sudip Sharma" }],
   openGraph: {
     title: "AI Movie Recommendation",

@@ -53,6 +53,45 @@ export function RecommendationApp() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<
+    "loading" | "ok" | "error"
+  >("loading");
+  const [backendMessage, setBackendMessage] = useState<string>("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkBackend() {
+      try {
+        const res = await fetch("/api/health");
+        const data = (await res.json()) as {
+          status: string;
+          message?: string;
+        };
+        if (cancelled) return;
+        if (data.status === "ok") {
+          setBackendStatus("ok");
+          setBackendMessage("Backend running successfully");
+        } else {
+          setBackendStatus("error");
+          setBackendMessage(
+            data.message ?? "Backend health check failed",
+          );
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setBackendStatus("error");
+        setBackendMessage(
+          err instanceof Error ? err.message : "Cannot reach backend",
+        );
+      }
+    }
+
+    checkBackend();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -116,6 +155,28 @@ export function RecommendationApp() {
               sudeepsharma826@gmail.com
             </a>
           </p>
+          <div className="mt-3 flex justify-center">
+            <Badge
+              variant={
+                backendStatus === "ok"
+                  ? "default"
+                  : backendStatus === "error"
+                    ? "destructive"
+                    : "secondary"
+              }
+              className={
+                backendStatus === "ok"
+                  ? "text-xs bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "text-xs"
+              }
+            >
+              {backendStatus === "loading"
+                ? "Checking backend..."
+                : backendStatus === "ok"
+                  ? "Backend running successfully"
+                  : backendMessage || "Backend unreachable"}
+            </Badge>
+          </div>
         </header>
 
         <AdSenseBanner slot="TOP_BANNER_SLOT" />
