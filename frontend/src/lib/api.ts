@@ -1,7 +1,5 @@
 import { RecommendationsResponse } from "@/types/movie";
 
-const api_url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 export class ApiError extends Error {
   code?: string;
   status: number;
