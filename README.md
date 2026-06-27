@@ -440,6 +440,7 @@ PORT=8000
 # For local development: http://localhost:3000
 # For production: https://your-frontend.vercel.app
 ORIGIN_URL=http://localhost:3000
+NODE_ENV=development
 ```
 
 ### Frontend (`.env`)
