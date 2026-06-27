@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Movie } from "@/types/movie";
-import { fetchMovies } from "@/lib/api";
+import { fetchMovies, ApiError } from "@/lib/api";
 
 const GENRES = [
   "thriller",
@@ -255,7 +255,13 @@ export function RecommendationApp() {
 
       setMovies(data.movies);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("We ran into an unexpected issue. Please try again.");
+      }
       setMovies([]);
     } finally {
       setLoading(false);
@@ -535,7 +541,7 @@ export function RecommendationApp() {
                     Your picks will appear here
                   </h3>
                   <p className="mt-2 max-w-sm text-sm text-slate-500">
-                    Set your genre, mood, and describe what you want — then hit
+                    Set your genre, mood, and describe what you want ï¿½ then hit
                     Get recommendations.
                   </p>
                 </div>

@@ -18,6 +18,14 @@ type RecommendationInput = {
 };
 
 export async function runRecommendationTool(input: RecommendationInput) {
+  if (!input.userPrompt || !input.genre || !input.mood || !input.count || input.count < 1) {
+    throw new Error("Please provide valid preferences: a description, genre, mood, and number of movies (1 or more).");
+  }
+
+  if (input.count > 20) {
+    throw new Error("You can request up to 20 movies at a time. Please lower the count and try again.");
+  }
+
   const result = await getStructuredRecommendations(input);
 
   const userKey = `${input.genre}|${input.mood}|${input.count}|${input.userPrompt}`;

@@ -2,6 +2,20 @@ import { RecommendationsResponse } from "@/types/movie";
 
 const api_url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export class ApiError extends Error {
+  code?: string;
+  status: number;
+  retryAfterSeconds?: number;
+
+  constructor(message: string, status: number, code?: string, retryAfterSeconds?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 export async function fetchMovies(input: {
   userPrompt: string;
   genre: string;
@@ -15,10 +29,16 @@ export async function fetchMovies(input: {
     body: JSON.stringify(input),
   });
 
+  const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error ?? "Failed to fetch recommendations");
+    throw new ApiError(
+      data.error ?? "We couldn't fetch movie recommendations right now. Please try again.",
+      response.status,
+      data.code,
+      data.retryAfterSeconds,
+    );
   }
 
-  return response.json();
+  return data;
 }

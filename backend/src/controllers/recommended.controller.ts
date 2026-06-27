@@ -13,12 +13,20 @@ export async function recommendedMovies(req: Request, res: Response) {
       email,
     } = req.body;
 
+    if (!userPrompt || !userPrompt.trim()) {
+      return res.status(400).json({
+        error: "Please tell us what kind of movies you're looking for. A short description helps us find the perfect picks!",
+        code: "PROMPT_REQUIRED",
+      });
+    }
+
     const rateUserKey = email || req.ip || "anonymous";
 
     const rate = checkRateLimit(rateUserKey);
     if (!rate.allowed) {
       return res.status(429).json({
-        error: "Too many requests",
+        error: `You've been making a lot of requests! Please wait about ${rate.retryAfterSeconds} seconds before trying again.`,
+        code: "RATE_LIMITED",
         retryAfterSeconds: rate.retryAfterSeconds,
       });
     }
@@ -54,6 +62,28 @@ export async function recommendedMovies(req: Request, res: Response) {
     return res.json({ ...result, cached: false, requiresVerification: false });
   } catch (error) {
     console.log(error);
-    res.status(500).json({ error: "Something goes wrong" });
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("timed out") || message.includes("timeout") || message.includes("ETIMEDOUT")) {
+      return res.status(504).json({
+        error: "The recommendation service is taking longer than expected. Please try again in a moment.",
+        code: "SERVICE_TIMEOUT",
+      });
+    }
+    if (message.includes("rate_limit") || message.includes("Rate limit")) {
+      return res.status(429).json({
+        error: "You've reached the request limit. Please wait a moment before trying again.",
+        code: "RATE_LIMITED",
+      });
+    }
+    if (message.includes("401") || message.includes("unauthorized") || message.includes("API key")) {
+      return res.status(502).json({
+        error: "We're having trouble connecting to our movie database. Our team has been notified.",
+        code: "LLM_CONFIG_ERROR",
+      });
+    }
+    res.status(500).json({
+      error: "Something unexpected happened while finding your recommendations. Please try again.",
+      code: "INTERNAL_ERROR",
+    });
   }
 }
