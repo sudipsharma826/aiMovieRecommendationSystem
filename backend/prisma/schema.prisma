@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  isVerified    Boolean   @default(false)
+  otp           String?
+  otpExpiresAt  DateTime?
+  authToken     String?
+  tokenExpiresAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@map("users")
+}
+
+model RecommendationQuery {
+  id          String   @id @default(cuid())
+  userPrompt  String
+  genre       String
+  mood        String
+  count       Int
+  resultJson  String
+  source      String   @default("llm") // llm | cache
+  createdAt   DateTime @default(now())
+
+  @@map("recommendation_queries")
+}

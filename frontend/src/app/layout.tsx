@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "AI Movie Recommendation",
     description: "AI Movie Recommendation by Sudip Sharma. Discover your next favorite movie with our intelligent recommendation engine.",
-    url: "https://aimovie.sudipsharma.com.np",
+    url: "https://aimovie.sudipsharma.com",
     siteName: "AI Movie Recommendation",
     type: "website",
   },

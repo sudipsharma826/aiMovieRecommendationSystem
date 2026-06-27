@@ -276,7 +276,36 @@ export async function recommendedMovies(req: Request, res: Response) {
     res.status(500).json({ error: "Something goes wrong" });
   }
 }
-```
+---
+
+### Phase 5: User Verification & Auth
+
+**Files:** backend/src/services/auth.service.ts, backend/src/routes/auth.routes.ts, backend/src/middleware/auth.middleware.ts
+
+A full **email-OTP verification flow** keeps the system gated but secure:
+
+**Frontend integration:**
+- RecommendationApp checks /api/auth/me on mount
+- Blocks recommendation submission until authenticated
+- Guides user through: enter email → receive 6-digit code → verify → unlock
+
+---
+
+### Phase 6: LLM-Powered Cache System
+
+**Files:** backend/src/services/cache-check.service.ts
+
+---
+
+### Phase 7: Tool Execution & Rate Limiting
+
+**Files:** backend/src/services/recommendation-tool.service.ts, backend/src/controllers/recommended.controller.ts
+
+---
+
+### Phase 8: Prisma ORM & Migrations
+
+**Files:** backend/prisma/schema.prisma, backend/migrations/
 
 ---
 

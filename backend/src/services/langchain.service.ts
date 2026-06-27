@@ -10,7 +10,8 @@ function getChatModel() {
     apiKey: process.env.OPENROUTER_API_KEY,
 
     // which model OpenRouter should call
-    model: "deepseek/deepseek-chat-v3",
+    // controlled by OPENROUTER_MODEL env (default to deepseek if missing)
+    model: process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat-v3",
     maxTokens: 4000, // max tokens in the response
 
     // controls randomness

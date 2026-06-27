@@ -11,6 +11,7 @@ export async function fetchMovies(input: {
   const response = await fetch(`${api_url}/api/recommend`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(input),
   });
 

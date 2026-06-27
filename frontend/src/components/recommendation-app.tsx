@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Clapperboard, Loader2, Mail, Wand2 } from "lucide-react";
+import { Clapperboard, Loader2, Mail, ShieldCheck, Wand2 } from "lucide-react";
 import Image from "next/image";
 
 import { MovieCard } from "@/components/movie-card";
 import { MovieCardSkeleton } from "@/components/movie-card-skeleton";
 import { AdSenseBanner } from "@/components/adsense-banner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -42,6 +43,8 @@ const MOODS = [
 
 const COUNTS = ["3", "5", "10"] as const;
 
+type AuthStep = "email" | "otp" | "done";
+
 export function RecommendationApp() {
   const [userPrompt, setUserPrompt] = useState(
     "Suggest movies for a rainy night",
@@ -57,6 +60,14 @@ export function RecommendationApp() {
     "loading" | "ok" | "error"
   >("loading");
   const [backendMessage, setBackendMessage] = useState<string>("");
+
+  const [email, setEmail] = useState("");
+  const [authStep, setAuthStep] = useState<AuthStep>("email");
+  const [otp, setOtp] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,9 +104,142 @@ export function RecommendationApp() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!authChecked) {
+      checkAuth();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked]);
+
+  async function checkAuth() {
+    try {
+      const res = await fetch("/api/auth/me", {
+        method: "GET",
+        credentials: "include",
+      });
+      const data = (await res.json()) as { authenticated: boolean };
+      setAuthenticated(data.authenticated);
+    } catch {
+      setAuthenticated(false);
+    } finally {
+      setAuthChecked(true);
+    }
+  }
+
+  async function handleRequestOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim()) return;
+
+    setAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      const res = await fetch("/api/auth/request-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: email.trim() }),
+      });
+
+      const data = (await res.json()) as {
+        ok: boolean;
+        alreadyVerified?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "Failed to send OTP");
+      }
+
+      if (data.alreadyVerified) {
+        await handleIssueToken();
+      } else {
+        setAuthStep("otp");
+      }
+    } catch (err) {
+      setAuthError(
+        err instanceof Error ? err.message : "Failed to send OTP",
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleVerifyOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!otp.trim()) return;
+
+    setAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: email.trim(), otp: otp.trim() }),
+      });
+
+      const data = (await res.json()) as {
+        ok: boolean;
+        verified?: boolean;
+        token?: string;
+        error?: string;
+      };
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "Invalid or expired OTP");
+      }
+
+      setAuthStep("done");
+      setAuthenticated(true);
+      setAuthChecked(true);
+    } catch (err) {
+      setAuthError(
+        err instanceof Error ? err.message : "Invalid or expired OTP",
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleIssueToken() {
+    setAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      const res = await fetch("/api/auth/issue-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: email.trim() }),
+      });
+
+      const data = (await res.json()) as {
+        ok: boolean;
+        token?: string;
+        error?: string;
+      };
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "Failed to issue token");
+      }
+
+      setAuthStep("done");
+      setAuthenticated(true);
+      setAuthChecked(true);
+    } catch (err) {
+      setAuthError(
+        err instanceof Error ? err.message : "Failed to issue token",
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!userPrompt.trim()) return;
+    if (!userPrompt.trim() || !authenticated) return;
 
     setLoading(true);
     setError(null);
@@ -181,157 +325,234 @@ export function RecommendationApp() {
 
         <AdSenseBanner slot="TOP_BANNER_SLOT" />
 
-
-        <div className="grid gap-8 lg:grid-cols-[360px_1fr]">
-          <aside className="h-fit rounded-2xl border border-white/80 bg-white/80 p-6 shadow-xl shadow-violet-200/40 backdrop-blur-md">
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="flex items-center gap-2 text-violet-800">
-                <Clapperboard className="size-5" />
-                <h2 className="font-semibold">Your preferences</h2>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="prompt" className="text-slate-700">
-                  What are you in the mood for?
-                </Label>
-                <Textarea
-                  id="prompt"
-                  value={userPrompt}
-                  onChange={(e) => setUserPrompt(e.target.value)}
-                  placeholder="Suggest 3 thriller movies for a rainy night..."
-                  rows={4}
-                  className="resize-none border-violet-200/60 bg-violet-50/30 focus-visible:ring-violet-400/30"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label className="text-slate-700">Genre</Label>
-                  <Select value={genre} onValueChange={(v) => v && setGenre(v)}>
-                    <SelectTrigger className="w-full border-violet-200/60 bg-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GENRES.map((g) => (
-                        <SelectItem key={g} value={g}>
-                          {g.charAt(0).toUpperCase() + g.slice(1)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-700">Mood</Label>
-                  <Select value={mood} onValueChange={(v) => v && setMood(v)}>
-                    <SelectTrigger className="w-full border-violet-200/60 bg-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MOODS.map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {m.charAt(0).toUpperCase() + m.slice(1)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-slate-700">How many movies?</Label>
-                <Select value={count} onValueChange={(v) => v && setCount(v)}>
-                  <SelectTrigger className="w-full border-violet-200/60 bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COUNTS.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c} movies
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button
-                type="submit"
-                disabled={loading || !userPrompt.trim()}
-                className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-300/50 hover:from-violet-700 hover:to-indigo-700"
-                size="lg"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="animate-spin" />
-                    Finding movies...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 />
-                    Get recommendations
-                  </>
-                )}
-              </Button>
-            </form>
-
-            <div className="mt-6 flex justify-center">
-              <AdSenseBanner slot="SIDEBAR_AD_SLOT" format="auto" />
+        {!authenticated && authChecked && (
+          <div className="mx-auto max-w-md rounded-2xl border border-white/80 bg-white/90 p-6 shadow-xl shadow-violet-200/40 backdrop-blur-md">
+            <div className="mb-4 flex items-center gap-2 text-violet-800">
+              <ShieldCheck className="size-5" />
+              <h2 className="font-semibold">Verify your email</h2>
             </div>
-          </aside>
 
-          <main>
-            {error && (
-              <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {error}
+            {authError && (
+              <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {authError}
               </div>
             )}
 
-            {loading && (
-              <div className="grid gap-5 sm:grid-cols-2">
-                {Array.from({ length: Number(count) }).map((_, i) => (
-                  <MovieCardSkeleton key={i} />
-                ))}
-              </div>
-            )}
-
-            {!loading && movies.length > 0 && (
-              <div className="grid gap-5 sm:grid-cols-2">
-                {movies.map((movie, i) => (
-                  <MovieCard
-                    key={`${movie.title}-${i}`}
-                    movie={movie}
-                    index={i}
-                  />
-                ))}
-              </div>
-            )}
-
-            {!loading && !error && movies.length === 0 && !hasSearched && (
-              <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-violet-200/80 bg-white/50 px-6 text-center backdrop-blur-sm">
-                <div className="mb-4 flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100">
-                  <Clapperboard className="size-8 text-violet-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-800">
-                  Your picks will appear here
-                </h3>
-                <p className="mt-2 max-w-sm text-sm text-slate-500">
-                  Set your genre, mood, and describe what you want â€” then hit
-                  Get recommendations.
+            {authStep === "email" && (
+              <form onSubmit={handleRequestOtp} className="space-y-4">
+                <p className="text-sm text-slate-600">
+                  We need to verify your email before you can get recommendations.
                 </p>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="auth-email" className="text-slate-700">
+                    Email
+                  </Label>
+                  <Input
+                    id="auth-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="border-violet-200/60 bg-violet-50/30"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={authLoading || !email.trim()}
+                  className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700"
+                >
+                  {authLoading ? "Sending code..." : "Send verification code"}
+                </Button>
+              </form>
             )}
 
-            {!loading && !error && movies.length === 0 && hasSearched && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-10 text-center text-amber-800">
-                No movies returned. Try a different prompt.
-              </div>
+            {authStep === "otp" && (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <p className="text-sm text-slate-600">
+                  Enter the 6-digit code sent to <span className="font-medium">{email}</span>.
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="auth-otp" className="text-slate-700">
+                    Verification code
+                  </Label>
+                  <Input
+                    id="auth-otp"
+                    inputMode="numeric"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    placeholder="123456"
+                    className="border-violet-200/60 bg-violet-50/30"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={authLoading || !otp.trim()}
+                  className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700"
+                >
+                  {authLoading ? "Verifying..." : "Verify"}
+                </Button>
+              </form>
             )}
 
-          </main>
-
-          <div className="mt-10 flex justify-center">
-            <AdSenseBanner slot="BOTTOM_AD_SLOT" />
+            {authStep === "done" && (
+              <div className="text-center text-sm text-emerald-700">
+                Verified successfully. Loading recommendations...
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {authenticated && (
+          <div className="grid gap-8 lg:grid-cols-[360px_1fr]">
+            <aside className="h-fit rounded-2xl border border-white/80 bg-white/80 p-6 shadow-xl shadow-violet-200/40 backdrop-blur-md">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="flex items-center gap-2 text-violet-800">
+                  <Clapperboard className="size-5" />
+                  <h2 className="font-semibold">Your preferences</h2>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="prompt" className="text-slate-700">
+                    What are you in the mood for?
+                  </Label>
+                  <Textarea
+                    id="prompt"
+                    value={userPrompt}
+                    onChange={(e) => setUserPrompt(e.target.value)}
+                    placeholder="Suggest 3 thriller movies for a rainy night..."
+                    rows={4}
+                    className="resize-none border-violet-200/60 bg-violet-50/30 focus-visible:ring-violet-400/30"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-slate-700">Genre</Label>
+                    <Select value={genre} onValueChange={(v) => v && setGenre(v)}>
+                      <SelectTrigger className="w-full border-violet-200/60 bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GENRES.map((g) => (
+                          <SelectItem key={g} value={g}>
+                            {g.charAt(0).toUpperCase() + g.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-slate-700">Mood</Label>
+                    <Select value={mood} onValueChange={(v) => v && setMood(v)}>
+                      <SelectTrigger className="w-full border-violet-200/60 bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MOODS.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {m.charAt(0).toUpperCase() + m.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-slate-700">How many movies?</Label>
+                  <Select value={count} onValueChange={(v) => v && setCount(v)}>
+                    <SelectTrigger className="w-full border-violet-200/60 bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COUNTS.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c} movies
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={loading || !userPrompt.trim()}
+                  className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-300/50 hover:from-violet-700 hover:to-indigo-700"
+                  size="lg"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="animate-spin" />
+                      Finding movies...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 />
+                      Get recommendations
+                    </>
+                  )}
+                </Button>
+              </form>
+
+              <div className="mt-6 flex justify-center">
+                <AdSenseBanner slot="SIDEBAR_AD_SLOT" format="auto" />
+              </div>
+            </aside>
+
+            <main>
+              {error && (
+                <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {error}
+                </div>
+              )}
+
+              {loading && (
+                <div className="grid gap-5 sm:grid-cols-2">
+                  {Array.from({ length: Number(count) }).map((_, i) => (
+                    <MovieCardSkeleton key={i} />
+                  ))}
+                </div>
+              )}
+
+              {!loading && movies.length > 0 && (
+                <div className="grid gap-5 sm:grid-cols-2">
+                  {movies.map((movie, i) => (
+                    <MovieCard
+                      key={`${movie.title}-${i}`}
+                      movie={movie}
+                      index={i}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {!loading && !error && movies.length === 0 && !hasSearched && (
+                <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-violet-200/80 bg-white/50 px-6 text-center backdrop-blur-sm">
+                  <div className="mb-4 flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100">
+                    <Clapperboard className="size-8 text-violet-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-800">
+                    Your picks will appear here
+                  </h3>
+                  <p className="mt-2 max-w-sm text-sm text-slate-500">
+                    Set your genre, mood, and describe what you want — then hit
+                    Get recommendations.
+                  </p>
+                </div>
+              )}
+
+              {!loading && !error && movies.length === 0 && hasSearched && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-10 text-center text-amber-800">
+                  No movies returned. Try a different prompt.
+                </div>
+              )}
+            </main>
+
+            <div className="mt-10 flex justify-center">
+              <AdSenseBanner slot="BOTTOM_AD_SLOT" />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
