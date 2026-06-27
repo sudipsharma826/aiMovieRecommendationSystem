@@ -1,28 +1,28 @@
-import { ChatGoogle } from "@langchain/google/node";
-
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-
-import { ChatOpenAI } from "@langchain/openai";
 import { RecommendationsSchema } from "../schemas/movie.schema";
+import { ChatOpenRouter } from "@langchain/openrouter";
 
+// create and configure the LLM in one place
+// if we want to change the provider/model later (GPT -> Claude -> Gemini),
+// we only change this function instead of every file.
 function getChatModel() {
-  const provider = process.env.LLM_PROVIDER ?? "openai";
+  return new ChatOpenRouter({
+    apiKey: process.env.OPENROUTER_API_KEY,
 
-  if (provider === "google") {
-    return new ChatGoogle({
-      model: "gemini-2.5-flash",
-      temperature: 0.3,
-      // lower the temp = more consistent
-      // less random answers
-    });
-  }
+    // which model OpenRouter should call
+    model: "openai/gpt-4o",
 
-  return new ChatOpenAI({
-    model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-    temperature: 0.3,
+    // controls randomness
+    // lower = more deterministic
+    // higher = more creative
+    temperature: 0.7,
   });
 }
 
+// create ONE reusable model instance
+// the model object is our connection to the LLM
+// we reuse it everywhere instead of creating a new ChatOpenRouter()
+// every time we want to make a request.
 const model = getChatModel();
 
 const promptTemplate = ChatPromptTemplate.fromMessages([
@@ -45,6 +45,7 @@ Do not recommend only the most obvious titles every time.`,
   [
     "human",
     // human msg - user's req with variables
+    // {variables} are replaced during invoke()
     `User request: {userPrompt}
 
 Preferences:
@@ -60,13 +61,21 @@ export async function getRecommendations(input: {
   mood: string;
   count: number;
 }) {
+  // connect PromptTemplate -> Model
+  // output of the prompt becomes input to the LLM
   const chain = promptTemplate.pipe(model);
 
-  // .pipe(model) = LCEL - langchain expression langauage
-  // connecys componets into a chain
-  // input - promptteample  -> variables - call model (gemini) - response
+  // .pipe(model) = LCEL - langchain expression language
+  // connects components into a chain
+  // input -> prompt template -> fills variables -> model -> response
 
   const response = await chain.invoke({
+    // invoke() runs the entire chain
+    // 1. replace variables
+    // 2. build chat messages
+    // 3. send to the LLM
+    // 4. return the AI response
+
     userPrompt: input.userPrompt,
     genre: input.genre,
     mood: input.mood,
@@ -75,11 +84,17 @@ export async function getRecommendations(input: {
 
   console.log(response.text);
 
+  // response is an AIMessage object
+  // .text gives only the generated text
   return response.text;
 }
 
-//  zod + structured output
+// zod + structured output
 
+// wrap the normal model so it returns data
+// matching RecommendationsSchema instead of plain text
+// LangChain automatically asks the LLM for structured JSON
+// and validates it using the Zod schema.
 const structuredModel = model.withStructuredOutput(RecommendationsSchema);
 
 export async function getStructuredRecommendations(input: {
@@ -88,6 +103,9 @@ export async function getStructuredRecommendations(input: {
   mood: string;
   count: number;
 }) {
+  // same prompt
+  // different model
+  // this model returns a validated JavaScript object
   const chain = promptTemplate.pipe(structuredModel);
 
   const result = await chain.invoke({
@@ -99,5 +117,7 @@ export async function getStructuredRecommendations(input: {
 
   console.log(result);
 
+  // already parsed and validated
+  // no JSON.parse() needed
   return result;
 }

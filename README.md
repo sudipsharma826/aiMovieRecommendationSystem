@@ -25,6 +25,7 @@
 - [Setup & Installation](#setup--installation)
 - [API Reference](#api-reference)
 - [Commit History](#commit-history)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -34,11 +35,11 @@ This project is an educational crash course on **LangChain.js for TypeScript/Nod
 
 1. **User** inputs their mood, genre preference, and a custom prompt
 2. **Express backend** receives the request and orchestrates a LangChain pipeline
-3. **LLM (OpenAI or Google Gemini)** generates personalized movie recommendations
+3. **LLM (via OpenRouter)** generates personalized movie recommendations using models like `openai/gpt-4o`
 4. **Structured output** is validated through Zod schemas and returned as typed JSON
 5. **Next.js frontend** renders beautiful movie cards with ratings, cast, and personalized reasoning
 
-The entire backend is built around **LangChain Core** concepts: `ChatPromptTemplate`, `LCEL (.pipe())`, `.withStructuredOutput()`, multi-provider model routing, and Zod integration.
+The entire backend is built around **LangChain Core** concepts: `ChatPromptTemplate`, `LCEL (.pipe())`, `.withStructuredOutput()`, and Zod integration. We use **OpenRouter** as a unified gateway to access multiple LLM providers through a single API.
 
 ---
 
@@ -67,7 +68,7 @@ The entire backend is built around **LangChain Core** concepts: `ChatPromptTempl
 │  │  └── human: "User request: {userPrompt}..."              │       │
 │  │         │                                                 │       │
 │  │         ▼                                                 │       │
-│  │  .pipe() ──► ChatOpenAI / ChatGoogle                     │       │
+│  │  .pipe() ──► ChatOpenRouter (OpenAI/Gemini/Claude/etc)  │       │
 │  │         │                                                 │       │
 │  │         ▼                                                 │       │
 │  │  .withStructuredOutput(RecommendationsSchema)            │       │
@@ -93,8 +94,7 @@ The backend is a **Node.js + TypeScript + Express** application using `tsx` for 
 |---------|---------|
 | `express` + `cors` | HTTP server framework |
 | `@langchain/core` | LangChain primitives (prompts, chains, pipes) |
-| `@langchain/openai` | OpenAI model integration |
-| `@langchain/google` | Google Gemini model integration |
+| `@langchain/openrouter` | OpenRouter integration (unified LLM gateway) |
 | `langchain` | Full LangChain suite |
 | `zod` | Runtime schema validation |
 | `dotenv` | Environment variable management |
@@ -152,27 +152,19 @@ export type Recommendation = z.infer<typeof RecommendationsSchema>;
 
 This is the **heart of the backend**. It demonstrates 5 critical LangChain concepts:
 
-#### 3.1 Multi-Provider Model Factory
+#### 3.1 OpenRouter Integration
 
 ```typescript
 function getChatModel() {
-  const provider = process.env.LLM_PROVIDER ?? "openai";
-
-  if (provider === "google") {
-    return new ChatGoogle({
-      model: "gemini-2.5-flash",
-      temperature: 0.3,
-    });
-  }
-
-  return new ChatOpenAI({
-    model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-    temperature: 0.3,
+  return new ChatOpenRouter({
+    apiKey: process.env.OPENROUTER_API_KEY,
+    model: "openai/gpt-4o",  // or any model OpenRouter supports
+    temperature: 0.7,
   });
 }
 ```
 
-**Key insight:** LangChain provides a **unified interface** (`ChatModel`) across providers. Swap from OpenAI to Gemini by changing one env var — same chain code, same invocation pattern.
+**Key insight:** OpenRouter provides a **unified API** to access multiple LLM providers (OpenAI, Anthropic, Google, Meta, etc.) through a single API key. This simplifies deployment and allows easy model switching without changing provider-specific SDKs.
 
 #### 3.2 ChatPromptTemplate
 
@@ -215,7 +207,7 @@ const chain = promptTemplate.pipe(model);
 **LCEL** is the **assembly line** of LangChain. It connects components:
 
 ```
-Input → Prompt Template (fill variables) → Model (call LLM) → Output
+Input → Prompt Template (fill variables) → Model (call LLM via OpenRouter) → Output
 ```
 
 Each component implements the `Runnable` interface, so they can be chained with `.pipe()`. This composability is LangChain's superpower.
@@ -246,7 +238,7 @@ export async function getStructuredRecommendations(input: { ... }) {
 
 **This is where LangChain truly shines.** `.withStructuredOutput()` binds the Zod schema to the model. The chain:
 1. Fills the prompt template with user input
-2. Sends it to the LLM with schema instructions
+2. Sends it to the LLM via OpenRouter with schema instructions
 3. The LLM returns JSON that matches the schema
 4. LangChain validates and parses it automatically
 
@@ -321,7 +313,7 @@ Utility: `cn()` function combining `clsx` + `tailwind-merge` for clean condition
 
 **`ConceptsShowcase`** — Educational page with 9 LangChain concept cards organized by section:
 1. **Foundation:** What is LangChain?, Core Building Blocks
-2. **Models:** OpenAI + Gemini Integration
+2. **Models:** OpenRouter Integration
 3. **Prompts:** Prompt Template, System Message, Human Message
 4. **Chains:** LCEL (.pipe()), .invoke()
 5. **Output:** Structured Output + Zod
@@ -345,7 +337,7 @@ Utility: `cn()` function combining `clsx` + `tailwind-merge` for clean condition
 | 3 | **Human Message** | `langchain.service.ts:46-54` | User's request with dynamic placeholders replaced at runtime |
 | 4 | **LCEL (.pipe())** | `langchain.service.ts:65, 91` | Assembly-line chaining: Prompt → Model → Output |
 | 5 | **.invoke()** | `langchain.service.ts:69, 93` | Run chain synchronously with one input → one output |
-| 6 | **Multi-Provider Model** | `langchain.service.ts:8-24` | Swap OpenAI ↔ Gemini via env variable, same chain code |
+| 6 | **OpenRouter Integration** | `langchain.service.ts:8-20` | Unified access to multiple LLM providers through OpenRouter |
 | 7 | **.withStructuredOutput()** | `langchain.service.ts:83` | Bind Zod schema to model for validated, typed JSON output |
 | 8 | **Zod Integration** | `movie.schema.ts` | `.describe()` feeds field hints to the model for accurate structured output |
 | 9 | **Type Inference** | `movie.schema.ts:23-25` | `z.infer<typeof Schema>` keeps frontend/backend types in sync |
@@ -378,8 +370,8 @@ Next.js RecommendationApp
         │     ├── system: "You are a movie expert..."
         │     └── human: "User request: {userPrompt}..."
         │
-        ├── .pipe() → ChatOpenAI or ChatGoogle
-        │     └── temperature: 0.3 (consistent output)
+        ├── .pipe() → ChatOpenRouter
+        │     └── temperature: 0.7 (consistent output)
         │
         ├── .withStructuredOutput(RecommendationsSchema)
         │     └── Zod validates output structure
@@ -405,15 +397,12 @@ Next.js RecommendationApp
 ### Backend (`.env`)
 
 ```env
-# LLM Provider: "openai" (default) or "google"
-LLM_PROVIDER=openai
+# OpenRouter API Key (get yours at https://openrouter.ai/keys)
+OPENROUTER_API_KEY=sk-or-v1-your-key-here
 
-# OpenAI Configuration (required if LLM_PROVIDER=openai)
-OPENAI_API_KEY=sk-your-key-here
-OPENAI_MODEL=gpt-4o-mini
-
-# Google Gemini Configuration (required if LLM_PROVIDER=google)
-GOOGLE_API_KEY=your-google-api-key
+# Model to use (any model supported by OpenRouter)
+# Popular options: openai/gpt-4o, anthropic/claude-3.5-sonnet, google/gemini-pro
+OPENROUTER_MODEL=openai/gpt-4o
 
 # Server
 PORT=8000
@@ -422,7 +411,9 @@ PORT=8000
 ### Frontend (`.env`)
 
 ```env
-# Backend API URL (default: http://localhost:8000)
+# Backend API URL
+# For local development: http://localhost:8000
+# For production: https://your-backend-domain.com
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
@@ -432,7 +423,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ### Prerequisites
 - **Node.js** >= 18
-- An **OpenAI API key** OR **Google Gemini API key**
+- An **OpenRouter API key** (get one free at https://openrouter.ai)
 
 ### Backend Setup
 
@@ -443,9 +434,9 @@ cd backend
 # Install dependencies
 npm install
 
-# Create environment file
+# Create environment file (if .env.example exists)
 cp .env.example .env
-# Edit .env with your API keys
+# Or create .env manually with your OpenRouter API key
 
 # Start development server (with hot reload)
 npm run dev
@@ -538,7 +529,7 @@ The project was built in **10 logical phases** with sequential commits to demons
 |---|-------|----------------|-------|
 | 1 | 🏗️ Project Setup | `chore: initialize project with backend and frontend scaffolding` | package.json, tsconfig, .env, next.config |
 | 2 | 📐 Data Models | `feat: define Zod validation schemas and shared TypeScript types` | movie.schema.ts, types/movie.ts |
-| 3 | ⚙️ LangChain Service | `feat: implement LangChain orchestration layer with multi-provider support` | langchain.service.ts |
+| 3 | ⚙️ LangChain Service | `feat: implement LangChain orchestration layer with OpenRouter integration` | langchain.service.ts |
 | 4 | 🌐 API Layer | `feat: create Express API layer with RESTful recommendation endpoint` | index.ts, routes, controllers |
 | 5 | 🎨 UI Primitives | `feat: integrate shadcn/ui component library with Tailwind utility layer` | components/ui/, lib/utils.ts |
 | 6 | 📦 App Components | `feat: build movie display components and API client layer` | MovieCard, Skeleton, api.ts |
@@ -549,12 +540,72 @@ The project was built in **10 logical phases** with sequential commits to demons
 
 ---
 
+## Troubleshooting
+
+### 404 Error When Hosting Frontend
+
+**Problem:** Frontend works in development (`npm run dev`) but shows 404 when hosted.
+
+**Solution:** Next.js 13+ with App Router requires explicit configuration for static exports or proper deployment setup.
+
+#### Option 1: Configure for Static Export (if deploying to static hosting)
+
+Update `frontend/next.config.ts`:
+
+```typescript
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  output: "export",
+  images: {
+    unoptimized: true,
+  },
+  trailingSlash: true,
+};
+
+export default nextConfig;
+```
+
+Then build and deploy:
+```bash
+cd frontend
+npm run build
+# Deploy the 'out' folder to your hosting service
+```
+
+#### Option 2: Deploy to Vercel/Netlify (Recommended)
+
+For Vercel:
+```bash
+npm install -g vercel
+vercel
+```
+
+For Netlify, use the Netlify adapter or deploy with:
+```bash
+npm run build
+# Upload the .next folder
+```
+
+#### Option 3: Ensure Backend is Running
+
+The 404 might be from the backend API, not the frontend. Make sure:
+1. Backend is running on `http://localhost:8000`
+2. `NEXT_PUBLIC_API_URL` in frontend `.env` points to the correct backend URL
+3. CORS is properly configured (already done in `backend/src/index.ts`)
+
+#### Option 4: Check API Route Configuration
+
+If you're using Next.js API routes (not in this project), ensure they're in `app/api/` directory with `route.ts` files. This project uses a separate Express backend, so this doesn't apply.
+
+---
+
 ## Why This Project Demonstrates Real Engineering Skills
 
 This project goes beyond a simple "call an API" demo. It shows:
 
 1. **Clean Architecture** — Separation of routes, controllers, services, schemas
-2. **Framework-Agnostic Design** — Swap LLM providers without changing business logic
+2. **Modern AI Integration** — OpenRouter for unified multi-provider LLM access
 3. **Type Safety** — End-to-end types from Zod schemas → TypeScript inference → UI components
 4. **Resilient AI Integration** — Structured output eliminates parsing errors from freeform LLM responses
 5. **Modern Tooling** — Next.js 16, shadcn/ui, Tailwind v4, TypeScript strict mode
@@ -568,7 +619,7 @@ This project goes beyond a simple "call an API" demo. It shows:
 | Skill | Demonstrated In |
 |-------|----------------|
 | LangChain pipeline orchestration | `langchain.service.ts` — prompt templates, pipes, structured output |
-| Multi-provider AI integration | `getChatModel()` — OpenAI ↔ Gemini swap |
+| OpenRouter integration | `getChatModel()` — unified access to multiple LLM providers |
 | Schema-driven development | `movie.schema.ts` — Zod schemas as single source of truth |
 | TypeScript patterns | Generic types, type inference, strict mode |
 | Express API design | Routes, controllers, error handling, CORS |
@@ -578,4 +629,4 @@ This project goes beyond a simple "call an API" demo. It shows:
 
 ---
 
-> Built with LangChain.js, Express, Next.js, TypeScript, and ❤️
+> Built with LangChain.js, Express, Next.js, TypeScript, OpenRouter, and ❤️
