@@ -10,6 +10,13 @@
 
 - [Project Overview](#project-overview)
 - [Architecture Overview](#architecture-overview)
+- [🔐 User Verification & Token Authentication](#-user-verification--token-authentication)
+  - [Why Token-Based Auth is Needed](#why-token-based-auth-is-needed)
+  - [Verification Flow (Step by Step)](#verification-flow-step-by-step)
+  - [Token Lifecycle & Cookie Configuration](#token-lifecycle--cookie-configuration)
+  - [How the Token Flows in Every Request](#how-the-token-flows-in-every-request)
+  - [Production Cookie Troubleshooting](#production-cookie-troubleshooting)
+
 - [Backend Architecture (Deep Dive)](#backend-architecture-deep-dive)
   - [Phase 1: Project Setup](#phase-1-project-setup--configuration)
   - [Phase 2: Data Models & Validation with Zod](#phase-2-data-models--validation-schemas)
@@ -34,10 +41,13 @@
 This project is an educational crash course on **LangChain.js for TypeScript/Node.js developers**. It builds a movie recommendation system where:
 
 1. **User** inputs their mood, genre preference, and a custom prompt
-2. **Express backend** receives the request and orchestrates a LangChain pipeline
-3. **LLM (via OpenRouter)** generates personalized movie recommendations using models like `openai/gpt-4o`
-4. **Structured output** is validated through Zod schemas and returned as typed JSON
-5. **Next.js frontend** renders beautiful movie cards with ratings, cast, and personalized reasoning
+2. **Email verification** via OTP is required before accessing recommendations
+3. **Express backend** receives the request, verifies the JWT token (7-day expiry), and orchestrates a LangChain pipeline
+4. **LLM (via OpenRouter)** generates personalized movie recommendations using models like `openai/gpt-4o`
+5. **Structured output** is validated through Zod schemas and returned as typed JSON
+6. **Next.js frontend** renders beautiful movie cards with ratings, cast, and personalized reasoning
+
+> **🔐 Auth Flow:** User enters email → receives 6-digit OTP → verifies OTP → gets a 7-day JWT token stored in an httpOnly cookie → token is sent with every API request. If the token is missing or expired, the user is redirected back to OTP verification.
 
 The entire backend is built around **LangChain Core** concepts: `ChatPromptTemplate`, `LCEL (.pipe())`, `.withStructuredOutput()`, and Zod integration. We use **OpenRouter** as a unified gateway to access multiple LLM providers through a single API.
 
@@ -77,6 +87,244 @@ The entire backend is built around **LangChain Core** concepts: `ChatPromptTempl
 │  │  { movies: [...] }  ← Validated by Zod                   │       │
 │  └──────────────────────────────────────────────────────────┘       │
 └─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔐 User Verification & Token Authentication
+
+### Why Token-Based Auth is Needed
+
+The `/api/recommend` endpoint (which generates AI movie recommendations) is **protected** by the `requireAuth` middleware. Every request to this endpoint **must include a valid `auth_token` cookie**. Without it, the backend returns:
+
+```json
+{
+  "error": "Please sign in to continue. Your session may have expired or you need to verify your email to access recommendations.",
+  "code": "AUTH_REQUIRED"
+}
+```
+
+> **Why is auth required?** Token-based authentication ensures:
+> 1. Only verified users can access the AI recommendation engine (prevents API abuse)
+> 2. Each user gets a fair rate limit (tracked by email/identity)
+> 3. The 7-day token provides persistent sessions without requiring repeated OTP entry
+> 4. Cached recommendations can be associated with verified users for a better experience
+
+---
+
+### Verification Flow (Step by Step)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      USER VERIFICATION FLOW                          │
+│                                                                     │
+│  ┌──────────┐     ┌──────────────┐     ┌──────────┐     ┌────────┐ │
+│  │  Enter    │────►│  Check Auth  │────►│  Enter   │────►│ Verify │ │
+│  │  Email    │     │  /api/auth/  │     │   OTP    │     │  OTP   │ │
+│  │           │     │    me        │     │  6-digit │     │        │ │
+│  └──────────┘     └──────────────┘     └──────────┘     └───┬────┘ │
+│       │                                                      │      │
+│       ▼                                                      ▼      │
+│  ┌──────────┐                                          ┌──────────┐│
+│  │ Request  │                                          │  7-Day   ││
+│  │   OTP    │                                          │  Token   ││
+│  │ /request-│                                          │  Issued  ││
+│  │   otp    │                                          │(httpOnly ││
+│  └──────────┘                                          │  cookie) ││
+│                                                        └────┬─────┘│
+│                                                             │      │
+│                                                             ▼      │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  Authenticated! Token sent with every /api/recommend request  │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Step-by-step breakdown
+
+| Step | Frontend Action | API Call | Backend Action |
+|------|----------------|----------|----------------|
+| 1 | User enters email | `POST /api/auth/request-otp` | Generates 6-digit OTP, stores in DB with 10-min expiry, sends via email (Resend) |
+| 2 | User checks email for OTP | — | — |
+| 3 | User enters 6-digit OTP | `POST /api/auth/verify-otp` | Validates OTP, marks user verified, generates JWT, sets `auth_token` cookie |
+| 4 | User is authenticated | `GET /api/auth/me` | Returns `{ authenticated: true }` |
+| 5 | User gets recommendations | `POST /api/recommend` (with cookie) | Middleware verifies `auth_token`, allows request |
+
+**If token expires or is missing:**
+1. The `requireAuth` middleware returns `401` with `AUTH_REQUIRED` code
+2. Frontend shows the email verification overlay again
+3. If email is already verified, `/api/auth/issue-token` sends a new token without requiring OTP again
+
+---
+
+### Token Lifecycle & Cookie Configuration
+
+**Token generation** (`backend/src/services/auth.service.ts`):
+
+```typescript
+function generateToken() {
+  return jwt.sign({ type: "auth" }, JWT_SECRET, {
+    expiresIn: "7d",
+  });
+}
+```
+
+**Cookie settings** (`backend/src/routes/auth.routes.ts`):
+
+```typescript
+res.cookie("auth_token", token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+  path: "/",
+});
+```
+
+| Property | Development | Production | Why |
+|----------|------------|------------|-----|
+| `secure` | `false` | `true` | In prod, cookie only sent over HTTPS |
+| `sameSite` | `lax` | `none` | `none` allows cross-site requests (frontend & backend on different domains) |
+| `httpOnly` | `true` | `true` | Prevents XSS attacks — JS cannot read the token |
+| `maxAge` | 7 days | 7 days | Persistent session |
+
+**Prisma database schema** (User model):
+- `email` — unique user identifier
+- `otp` — current valid OTP (cleared after verification)
+- `otpExpiresAt` — OTP expiry (10 minutes)
+- `isVerified` — boolean flag
+- `authToken` — current JWT token
+- `tokenExpiresAt` — token expiry (7 days)
+
+---
+
+### How the Token Flows in Every Request
+
+**Client → Frontend API Route → Backend (Proxy Pattern)**
+
+Since the frontend (Next.js on Vercel) and backend (Express on Render/Railway) are deployed on **different origins**, we use a **proxy pattern** — Next.js API routes forward requests to the backend:
+
+```
+Client Browser                    Next.js (Vercel)               Express Backend
+     │                                  │                             │
+     │  POST /api/recommend             │                             │
+     │  Cookie: auth_token=xxx ─────────┤                             │
+     │                                  │                             │
+     │                                  │  fetch(backend/api/recommend)│
+     │                                  │  Cookie: auth_token=xxx ────┤
+     │                                  │                             │
+     │                                  │     requireAuth middleware  │
+     │                                  │     ✓ verifies JWT token   │
+     │                                  │                             │
+     │                                  │◄──── 200 { movies: [...] } │
+     │◄──── JSON response ──────────────┤                             │
+```
+
+**Step 1 — Frontend proxy reads the cookie** (`frontend/src/app/api/recommend/route.ts`):
+
+```typescript
+const cookie = req.cookies.get("auth_token");
+if (cookie?.value) {
+  headers["Cookie"] = `auth_token=${cookie.value}`;
+}
+const response = await fetch(`${BACKEND_URL}/api/recommend`, {
+  method: "POST",
+  headers,
+  body: body ? JSON.stringify(body) : undefined,
+  cache: "no-store",
+});
+```
+
+**Step 2 — Backend middleware verifies the token** (`backend/src/middleware/auth.middleware.ts`):
+
+```typescript
+export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const token = req.cookies?.auth_token as string | undefined;
+  if (!token || !verifyAuthToken(token)) {
+    return res.status(401).json({
+      error: "Please sign in to continue...",
+      code: "AUTH_REQUIRED",
+    });
+  }
+  next();
+}
+```
+
+**Step 3 — Client sends credentials** (`frontend/src/lib/api.ts`):
+
+```typescript
+const response = await fetch(`/api/recommend`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  credentials: "include",  // ← CRITICAL: sends cookies with the request
+  body: JSON.stringify(input),
+});
+```
+
+**Auth proxy also forwards Set-Cookie** (`frontend/src/app/api/auth/[...path]/route.ts`):
+
+```typescript
+const setCookie = response.headers.get("set-cookie");
+const nextResponse = NextResponse.json(data, { status: response.status });
+if (setCookie) {
+  nextResponse.headers.set("set-cookie", setCookie);
+}
+```
+
+---
+
+### Production Cookie Troubleshooting
+
+**The most common production issue:** The `auth_token` cookie is set correctly after OTP verification, but subsequent `/api/recommend` requests fail with `401 AUTH_REQUIRED`.
+
+**Root cause:** Cookies set by the backend are not being forwarded correctly through the Next.js proxy, OR the cookie is not being sent by the browser due to mismatched `secure`/`sameSite` settings.
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| Token works in dev but not in prod | Cookie `secure` flag mismatch | Ensure `NODE_ENV=production` is set on backend |
+| Token works on first load but not after page refresh | Cookie domain mismatch | Check that the cookie domain matches the frontend domain |
+| "Set-Cookie" header not reaching browser | Proxy not forwarding headers | Verify `frontend/src/app/api/auth/[...path]/route.ts` forwards `Set-Cookie` |
+| Token appears in browser but API returns 401 | Token not forwarded in proxy | Check `req.cookies.get("auth_token")` in the recommend proxy route |
+| CORS errors in production | Backend `origin` not matching frontend URL | Update `ORIGIN_URL` env var to the production frontend URL |
+| Cookie not set over HTTPS | Missing `secure: true` | Backend must have `NODE_ENV=production` for `secure: true` to activate |
+
+**Quick Checklist for Production:**
+- [ ] Backend `NODE_ENV` is set to `production`
+- [ ] Backend `ORIGIN_URL` matches your frontend domain (e.g., `https://aimovie.sudipsharma.com`)
+- [ ] Backend `JWT_SECRET` is set to a strong, unique value
+- [ ] Backend `RESEND_API_KEY` is configured for email delivery
+- [ ] Frontend `NEXT_PUBLIC_API_URL` points to the backend URL
+- [ ] Frontend is deployed on HTTPS (Vercel does this by default)
+- [ ] Backend is deployed on HTTPS
+- [ ] `credentials: "include"` is set on all fetch calls to the API
+- [ ] `httpOnly`, `secure`, and `sameSite: "none"` are all correctly configured
+
+**Debugging in Browser Console:**
+
+```javascript
+// Check if the cookie exists
+document.cookie.includes("auth_token");
+
+// Check if credentials are being sent
+fetch("/api/auth/me", { credentials: "include" })
+  .then(r => r.json())
+  .then(console.log);
+```
+
+**Debugging with curl:**
+
+```bash
+# Test OTP verification and check Set-Cookie headers
+curl -X POST https://your-backend.com/api/auth/verify-otp \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","otp":"123456"}' \
+  -v
+
+# Test recommendation with cookie
+curl -X POST https://your-backend.com/api/recommend \
+  -H "Content-Type: application/json" \
+  -H "Cookie: auth_token=YOUR_TOKEN_HERE" \
+  -d '{"userPrompt":"funny movies","genre":"comedy","mood":"happy","count":3}'
 ```
 
 ---
